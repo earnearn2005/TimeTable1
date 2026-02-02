@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดตารางสอน (วิทยาลัยเทคนิคพังงา)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js"></script>
+
+    <style>
+        :root { --border-color: #444; --bg-merge: #e3f2fd; --header-bg: #0d47a1; }
+        body { background-color: #fff; font-family: 'Sarabun', sans-serif; font-size: 12px; color: #333; padding: 0; margin: 0; }
+
+        /* Controls */
+        .app-controls {
+            background: linear-gradient(90deg, #1565c0, #0d47a1); color: white;
+            padding: 20px 4cm; margin-bottom: 30px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); border-radius: 0; width: 100%;
+        }
+        .app-controls .form-select { border: 1px solid #90caf9; background-color: #f0f8ff; }
+
+        /* Main Content */
+        #mainContainer { padding: 0 4cm 50px 4cm; }
+        
+        /* Schedule Layout */
+        .schedule-wrapper { page-break-after: always; margin-bottom: 50px; }
+        .schedule-wrapper:last-child { page-break-after: auto; }
+
+        .form-header { display: flex; border: 1px solid var(--border-color); margin-bottom: 15px; height: 240px; border-radius: 4px; overflow: hidden; }
+        .header-info { width: 30%; border-right: 1px solid var(--border-color); padding: 15px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; }
+        .logo-box { width: 110px; height: 110px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+        .logo-img-display { max-width: 100%; max-height: 100%; object-fit: contain; }
+        .info-text { text-align: left; width: 100%; font-size: 12px; line-height: 1.5; color: #000; }
+
+        .header-summary { width: 70%; display: flex; }
+        .summary-col { width: 50%; border-right: 1px solid var(--border-color); }
+        .summary-col:last-child { border-right: none; }
+
+        .sum-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .sum-table th, .sum-table td { border: 1px solid var(--border-color); padding: 3px; text-align: center; height: 22px; }
+        .sum-table th { background: #f1f1f1; font-weight: 600; color: #000; }
+        .text-left { text-align: left !important; padding-left: 8px !important; }
+
+        /* Grid */
+        .grid-container { width: 95%; margin: 0 auto; }
+        .schedule-grid { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; table-layout: fixed; }
+        .schedule-grid th, .schedule-grid td { border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 4px; text-align: center; vertical-align: middle; overflow: hidden; }
+        .schedule-grid tr:last-child td { border-bottom: none; }
+        .schedule-grid th:last-child, .schedule-grid td:last-child { border-right: none; }
+        .schedule-grid th { height: 45px; background: #fff; font-weight: bold; color: #000; }
+        .schedule-grid td { height: 60px; vertical-align: top; font-size: 11px; color: #000; }
+
+        .lunch-cell { background-color: #f8f9fa; font-size: 12px; color: #555; font-weight: bold; vertical-align: middle !important; }
+        .merged-class { background-color: var(--bg-merge) !important; vertical-align: middle !important; }
+
+        /* Signature (Print Only) */
+        .signature-section { display: none; }
+
+        #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { padding: 0 !important; margin: 0 !important; }
+            #mainContainer { padding: 0 !important; }
+            @page { size: landscape; margin: 0.5cm; }
+            .merged-class { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .lunch-cell { -webkit-print-color-adjust: exact; }
+            th, td { border: 1px solid #000 !important; }
+            .schedule-grid { border: 1px solid #000 !important; border-radius: 0; }
+            .btn-group { display: none; }
+            
+            .signature-section {
+                display: flex !important; justify-content: space-between;
+                margin-top: 20px; width: 95%; margin-left: auto; margin-right: auto;
+                page-break-inside: avoid;
+            }
+            .sig-box { width: 24%; text-align: center; font-size: 11px; color: #000; }
+            .sig-line { margin-top: 25px; margin-bottom: 5px; }
+            .sig-name { margin-bottom: 5px; }
+            .sig-pos { font-weight: bold; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">
+        <div class="spinner-border text-primary mb-3"></div>
+        <h5 id="loadingText">กำลังเตรียมเอกสาร...</h5>
+    </div>
+
+    <div class="app-controls no-print">
+        <div class="d-flex align-items-center mb-3 pb-2 border-bottom border-white-50">
+            <i class="bi bi-calendar-check-fill fs-3 me-2"></i>
+            <div>
+                <h4 class="m-0 fw-bold">โปรแกรมจัดตารางสอนอัตโนมัติ</h4>
+                <small style="opacity: 0.8;">วิทยาลัยเทคนิคพังงา</small>
+            </div>
+        </div>
+
+        <div class="row align-items-end g-3">
+            <div class="col-md-7">
+                 <label class="form-label fw-bold small text-white">เลือกข้อมูลที่ต้องการแสดง</label>
+                 <div class="d-flex gap-2">
+                    <select id="ddGroup" class="form-select" onchange="renderSingle('group')"><option value="">-- กลุ่มเรียน --</option></select>
+                    <select id="ddTeacher" class="form-select" onchange="renderSingle('teacher')"><option value="">-- ครูผู้สอน --</option></select>
+                    <select id="ddRoom" class="form-select" onchange="renderSingle('room')"><option value="">-- ห้องเรียน --</option></select>
+                 </div>
+            </div>
+
+            <div class="col-md-5 text-end">
+                <label class="form-label fw-bold small text-white d-block">&nbsp;</label>
+                <div class="d-flex gap-2 justify-content-end">
+                    <button onclick="exportToExcel()" class="btn btn-success text-white shadow-sm border-0">
+                        <i class="bi bi-file-earmark-excel-fill"></i> Excel (Grid)
+                    </button>
+                    <button onclick="exportToCSV()" class="btn btn-warning text-dark shadow-sm border-0">
+                        <i class="bi bi-filetype-csv"></i> CSV (List)
+                    </button>
+                    <div class="btn-group shadow-sm">
+                        <button type="button" class="btn btn-light text-primary fw-bold" onclick="window.print()">
+                            <i class="bi bi-printer-fill"></i> PDF/พิมพ์
+                        </button>
+                        <button type="button" class="btn btn-light text-primary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="visually-hidden">Toggle Dropdown</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">พิมพ์รายงานสรุป (Batch)</h6></li>
+                            <li><a class="dropdown-item" href="#" onclick="renderBatch('all_groups')"><i class="bi bi-people"></i> กลุ่มเรียนทั้งหมด</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="renderBatch('all_teachers')"><i class="bi bi-person-badge"></i> ครูผู้สอนทั้งหมด</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="renderBatch('all_rooms')"><i class="bi bi-building"></i> ห้องเรียนทั้งหมด</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainContainer">
+        <div class="text-center text-muted py-5 no-print" style="opacity:0.6;">
+            <i class="bi bi-calendar4-range" style="font-size:4rem; color:#ddd;"></i>
+            <p class="mt-3">กรุณาเลือกข้อมูลเพื่อแสดงตาราง</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    let allData = [];
+    let masterData = { teachers: [], rooms: [], groups: [], subjects: [] };
+    let maps = { teacher: {}, room: {}, group: {}, subject: {} };
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    const dayNames = { 'Mon': 'จันทร์', 'Tue': 'อังคาร', 'Wed': 'พุธ', 'Thu': 'พฤหัส', 'Fri': 'ศุกร์' };
+    let currentLogoSrc = "img/2.png"; 
+    let exportQueue = []; 
+
+    async function init() {
+        try {
+            const optRes = await fetch('/api/options');
+            masterData = await optRes.json();
+            
+            masterData.teachers?.forEach(t => maps.teacher[t.teacher_id] = t.teacher_name || t.teacher_id);
+            masterData.rooms?.forEach(r => maps.room[r.room_id] = r.room_name || r.room_id);
+            masterData.groups?.forEach(g => {
+                let name = g.group_name || g.group_id;
+                try { if(name.includes('-')) name = name.split('-')[0].trim(); } catch(e){}
+                maps.group[g.group_id] = name;
+            });
+            masterData.subjects?.forEach(s => maps.subject[s.subject_id] = s);
+
+            populateSelect('ddGroup', masterData.groups, 'group_id', 'group_name');
+            populateSelect('ddTeacher', masterData.teachers, 'teacher_id', 'teacher_name');
+            populateSelect('ddRoom', masterData.rooms, 'room_id', 'room_name');
+
+            const res = await fetch('/api/schedule');
+            allData = await res.json();
+        } catch (e) { console.error(e); }
+    }
+
+    // --- Perfect Excel Export Logic ---
+    async function exportToExcel() {
+        if (!exportQueue || exportQueue.length === 0) { alert("กรุณาเลือกข้อมูล"); return; }
+
+        const wb = XLSX.utils.book_new();
+
+        const borderStyle = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
+        const headerStyle = { font: { bold: true, sz: 11 }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: borderStyle, fill: { fgColor: { rgb: "F2F2F2" } } };
+        const cellStyle = { font: { sz: 11 }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: borderStyle };
+        const mergedStyle = { font: { sz: 11 }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: borderStyle, fill: { fgColor: { rgb: "E3F2FD" } } };
+        const lunchStyle = { font: { bold: true, color: { rgb: "666666" } }, alignment: { horizontal: "center", vertical: "center" }, border: borderStyle, fill: { fgColor: { rgb: "E0E0E0" } } };
+        const titleStyle = { font: { bold: true, sz: 14 } };
+        const boldStyle = { font: { bold: true } };
+
+        exportQueue.forEach((item, idx) => {
+            let ws_data = [];
+            let merges = [];
+            let rowIdx = 0;
+
+            let sheetName = "";
+            let advisor = "";
+            let showAdvisor = false;
+
+            // Logic: ตรวจสอบว่าเป็นโหมดอะไร ถ้าไม่ใช่ Group ให้ซ่อน Advisor
+            if(item.mode.includes('group')) { 
+                sheetName = item.info.group_id; 
+                advisor = item.info.advisor || "-"; 
+                showAdvisor = true;
+            }
+            else if(item.mode.includes('teacher')) { sheetName = item.info.teacher_id; }
+            else { sheetName = item.info.room_id; }
+            
+            sheetName = (sheetName || `Sheet${idx+1}`).replace(/[\\/?*\[\]]/g, "").substring(0, 30);
+
+            ws_data.push([{ v: "วิทยาลัยเทคนิคพังงา", s: titleStyle }]); rowIdx++;
+            ws_data.push([{ v: `ภาคเรียนที่ 2/2568 - ${sheetName}`, s: boldStyle }]); rowIdx++;
+            
+            // [แก้ไข] แสดงเฉพาะถ้าเป็นกลุ่มเรียน
+            if (showAdvisor) {
+                ws_data.push([{ v: `ครูที่ปรึกษา: ${advisor}`, s: boldStyle }]); rowIdx++;
+            }
+            
+            ws_data.push([""]); rowIdx++;
+
+            // Summary Table
+            const subjectStats = {};
+            item.data.forEach(d => {
+                if (!subjectStats[d.subject_id]) {
+                    const s = maps.subject[d.subject_id] || {};
+                    subjectStats[d.subject_id] = { id: d.subject_id, name: s.subject_name || "", t: s.theory||0, p: s.practice||0, c: s.credit||0 };
+                }
+            });
+            ws_data.push([
+                {v:"ที่", s:headerStyle}, {v:"รหัสวิชา", s:headerStyle}, {v:"ชื่อวิชา", s:headerStyle}, 
+                {v:"ท", s:headerStyle}, {v:"ป", s:headerStyle}, {v:"น", s:headerStyle}
+            ]);
+            rowIdx++;
+            let count = 1;
+            Object.values(subjectStats).forEach(s => {
+                ws_data.push([
+                    {v: count++, s:cellStyle}, {v: s.id, s:cellStyle}, {v: s.name, s: {...cellStyle, alignment: {horizontal: "left"}}}, 
+                    {v: s.t, s:cellStyle}, {v: s.p, s:cellStyle}, {v: s.c, s:cellStyle}
+                ]);
+                rowIdx++;
+            });
+            ws_data.push([""]); rowIdx++;
+
+            // Schedule Grid
+            let headerRow = [{ v: "วัน / เวลา", s: headerStyle }];
+            for (let i = 1; i <= 12; i++) {
+                const timeStart = `${8 + i - 1}.00`;
+                const timeEnd = `${9 + i - 1}.00`;
+                headerRow.push({ v: `${i}\n${timeStart}-${timeEnd}`, s: headerStyle });
+            }
+            ws_data.push(headerRow);
+            const gridStartRow = rowIdx;
+            rowIdx++;
+
+            days.forEach((day, dIndex) => {
+                let rowData = [{ v: dayNames[day], s: headerStyle }];
+                for (let i = 1; i <= 12; ) {
+                    if (i === 5) { rowData.push({ v: "พักเที่ยง", s: lunchStyle }); i++; continue; }
+                    const currentClass = item.data.find(d => d.day === day && parseInt(d.period) === i);
+                    if (!currentClass) { rowData.push({ v: "", s: cellStyle }); i++; } 
+                    else {
+                        let duration = 1;
+                        for (let next = i + 1; next <= 12; next++) {
+                            if (next === 5) break;
+                            const nextClass = item.data.find(d => d.day === day && parseInt(d.period) === next);
+                            if (nextClass && nextClass.subject_id === currentClass.subject_id && nextClass.teacher_id === currentClass.teacher_id && nextClass.room_id === currentClass.room_id) { duration++; } else { break; }
+                        }
+                        const line1 = currentClass.subject_id;
+                        const line2 = (item.mode.includes('group')) ? maps.teacher[currentClass.teacher_id] : maps.group[currentClass.group_id];
+                        const line3 = (item.mode.includes('room')) ? maps.teacher[currentClass.teacher_id] : maps.room[currentClass.room_id];
+                        const cellText = `${line1}\n${line2}\n${line3}`;
+                        const style = duration > 1 ? mergedStyle : cellStyle;
+                        rowData.push({ v: cellText, s: style });
+                        if (duration > 1) {
+                            const r = gridStartRow + dIndex + 1; 
+                            merges.push({ s: { r: r, c: i }, e: { r: r, c: i + duration - 1 } });
+                        }
+                        for (let k = 1; k < duration; k++) rowData.push({ v: "", s: style });
+                        i += duration;
+                    }
+                }
+                ws_data.push(rowData);
+                rowIdx++;
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            if (merges.length > 0) ws['!merges'] = merges;
+            ws['!cols'] = [{ wch: 15 }, ...Array(12).fill({ wch: 13 })];
+            ws['!rows'] = [];
+            for(let k=0; k<ws_data.length; k++) { if(k > gridStartRow) ws['!rows'][k] = { hpx: 60 }; }
+
+            let finalName = sheetName;
+            let counter = 1;
+            while (wb.SheetNames.includes(finalName)) { finalName = `${sheetName}_${counter++}`; }
+            XLSX.utils.book_append_sheet(wb, ws, finalName);
+        });
+
+        XLSX.writeFile(wb, "schedule_perfect_export.xlsx");
+    }
+
+    function exportToCSV() {
+        const data = getExportData(); if(!data) return;
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "schedule_list.csv";
+        link.click();
+    }
+
+    // --- Render Logic ---
+    function renderSingle(type) {
+        if(type === 'group') { document.getElementById('ddTeacher').value = ""; document.getElementById('ddRoom').value = ""; }
+        if(type === 'teacher') { document.getElementById('ddGroup').value = ""; document.getElementById('ddRoom').value = ""; }
+        if(type === 'room') { document.getElementById('ddGroup').value = ""; document.getElementById('ddTeacher').value = ""; }
+
+        const g = document.getElementById('ddGroup').value;
+        const t = document.getElementById('ddTeacher').value;
+        const r = document.getElementById('ddRoom').value;
+
+        if (!g && !t && !r) return;
+
+        let filtered = []; let item = null; let mode = '';
+        if(g) { mode = 'all_groups'; item = masterData.groups.find(x => x.group_id === g); filtered = allData.filter(d => d.group_id === g); }
+        else if(t) { mode = 'all_teachers'; item = masterData.teachers.find(x => x.teacher_id === t); filtered = allData.filter(d => d.teacher_id === t); }
+        else if(r) { mode = 'all_rooms'; item = masterData.rooms.find(x => x.room_id === r); filtered = allData.filter(d => d.room_id === r); }
+
+        exportQueue = [{ data: filtered, info: item, mode: mode }];
+        const container = document.getElementById('mainContainer');
+        if (filtered.length > 0 && item) { container.innerHTML = createReportHTML(filtered, item, mode); } 
+        else { container.innerHTML = '<div class="text-center py-5 text-muted">ไม่พบข้อมูลในตารางเรียน</div>'; }
+    }
+
+    async function renderBatch(mode) {
+        const overlay = document.getElementById('loadingOverlay');
+        const container = document.getElementById('mainContainer');
+        overlay.style.display = 'flex';
+        await new Promise(r => setTimeout(r, 100));
+
+        let list = []; let idKey = '';
+        if (mode === 'all_groups') { list = masterData.groups; idKey = 'group_id'; }
+        else if (mode === 'all_teachers') { list = masterData.teachers; idKey = 'teacher_id'; }
+        else if (mode === 'all_rooms') { list = masterData.rooms; idKey = 'room_id'; }
+
+        let html = ''; let queue = [];
+        for (let item of list) {
+            const id = item[idKey];
+            const filtered = allData.filter(d => d[idKey] === id);
+            if (filtered.length > 0) {
+                html += createReportHTML(filtered, item, mode);
+                queue.push({ data: filtered, info: item, mode: mode });
+            }
+        }
+        exportQueue = queue; 
+        container.innerHTML = html || '<div class="text-center py-5">ไม่พบข้อมูล</div>';
+        overlay.style.display = 'none';
+    }
+
+    // --- HTML Generator ---
+    function createReportHTML(data, infoItem, mode) {
+        let title2 = "";
+        let advisorHtml = ""; 
+        
+        // [แก้ไข] สร้างบรรทัดที่ปรึกษาเฉพาะโหมดกลุ่มเรียน
+        if (mode.includes('group')) {
+            title2 = `กลุ่มเรียน: ${infoItem.group_name || infoItem.group_id}`;
+            const advisorName = infoItem.advisor || "-";
+            advisorHtml = `<strong>ครูที่ปรึกษา:</strong> ${advisorName}`;
+        } else if (mode.includes('teacher')) {
+            title2 = `ครูผู้สอน: ${infoItem.teacher_name || infoItem.teacher_id}`;
+            advisorHtml = ""; // ว่าง
+        } else {
+            title2 = `ห้องเรียน: ${infoItem.room_name || infoItem.room_id}`;
+            advisorHtml = ""; // ว่าง
+        }
+
+        const logoHTML = `<img src="${currentLogoSrc}" class="logo-img-display" alt="Logo" onerror="this.style.display='none'; this.parentNode.innerHTML='LOGO'">`;
+
+        const subjectStats = {};
+        data.forEach(d => {
+            if (!subjectStats[d.subject_id]) {
+                const s = maps.subject[d.subject_id] || {};
+                subjectStats[d.subject_id] = { id: d.subject_id, name: s.subject_name || d.subject_id, t: parseInt(s.theory || 0), p: parseInt(s.practice || 0), c: parseInt(s.credit || 0), h: parseInt(s.theory || 0) + parseInt(s.practice || 0) };
+            }
+        });
+        const subjects = Object.values(subjectStats);
+        const half = Math.ceil(subjects.length / 2);
+        const leftSubjs = subjects.slice(0, half);
+        const rightSubjs = subjects.slice(half);
+
+        const renderSumRows = (list) => {
+            let rows = ''; let sumT=0, sumP=0, sumC=0, sumH=0;
+            for(let i=0; i<8; i++) {
+                if(i < list.length) {
+                    const s = list[i]; sumT+=s.t; sumP+=s.p; sumC+=s.c; sumH+=s.h;
+                    rows += `<tr><td>${i+1}</td><td>${s.id}</td><td class="text-left">${s.name}</td><td>${s.t}</td><td>${s.p}</td><td>${s.c}</td><td>${s.h}</td></tr>`;
+                } else { rows += `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`; }
+            }
+            return { html: rows, totals: {t:sumT, p:sumP, c:sumC, h:sumH} };
+        };
+
+        const leftRes = renderSumRows(leftSubjs);
+        const rightRes = renderSumRows(rightSubjs);
+        const grandTotal = { t: leftRes.totals.t + rightRes.totals.t, p: leftRes.totals.p + rightRes.totals.p, c: leftRes.totals.c + rightRes.totals.c, h: leftRes.totals.h + rightRes.totals.h };
+
+        let gridRows = '';
+        days.forEach(day => {
+            gridRows += `<tr><td style="font-weight:bold; background:#fafafa;">${dayNames[day]}</td>`;
+            for (let i = 1; i <= 12; ) {
+                if (i === 5) { gridRows += `<td class="lunch-cell">พักเที่ยง</td>`; i++; continue; }
+                const currentClass = data.find(d => d.day === day && parseInt(d.period) === i);
+                if (!currentClass) { gridRows += `<td></td>`; i++; } 
+                else {
+                    let duration = 1;
+                    for (let next = i + 1; next <= 12; next++) {
+                        if (next === 5) break; 
+                        const nextClass = data.find(d => d.day === day && parseInt(d.period) === next);
+                        if (nextClass && nextClass.subject_id === currentClass.subject_id && nextClass.teacher_id === currentClass.teacher_id && nextClass.room_id === currentClass.room_id) { duration++; } else { break; }
+                    }
+                    const colspanAttr = duration > 1 ? `colspan="${duration}"` : '';
+                    const classStyle = duration > 1 ? 'merged-class' : ''; 
+                    const line1 = currentClass.subject_id;
+                    const line2 = (mode.includes('group')) ? maps.teacher[currentClass.teacher_id] : maps.group[currentClass.group_id];
+                    const line3 = (mode.includes('room')) ? maps.teacher[currentClass.teacher_id] : maps.room[currentClass.room_id];
+                    gridRows += `<td ${colspanAttr} class="${classStyle}"><div style="font-weight:bold;">${line1}</div><div>${line2}</div><div style="font-size:10px; font-style:italic;">${line3}</div></td>`;
+                    i += duration;
+                }
+            }
+            gridRows += `</tr>`;
+        });
+
+        return `
+        <div class="schedule-wrapper">
+            <div class="form-header">
+                <div class="header-info"><div class="logo-box">${logoHTML}</div><div class="info-text"><strong>ภาคเรียนที่ 2/2568</strong><br>วิทยาลัยเทคนิคพังงา<br>${title2}<br>${advisorHtml}</div></div>
+                <div class="header-summary">
+                    <div class="summary-col"><table class="sum-table"><thead><tr><th>ที่</th><th>รหัสวิชา</th><th>ชื่อวิชา</th><th>ท</th><th>ป</th><th>น</th><th>ช</th></tr></thead><tbody>${leftRes.html}<tr style="background:#f9f9f9; font-weight:bold;"><td colspan="3">รวมย่อย</td><td>${leftRes.totals.t}</td><td>${leftRes.totals.p}</td><td>${leftRes.totals.c}</td><td>${leftRes.totals.h}</td></tr></tbody></table></div>
+                    <div class="summary-col"><table class="sum-table"><thead><tr><th>ที่</th><th>รหัสวิชา</th><th>ชื่อวิชา</th><th>ท</th><th>ป</th><th>น</th><th>ช</th></tr></thead><tbody>${rightRes.html}<tr style="background:#f9f9f9; font-weight:bold;"><td colspan="3">รวมย่อย</td><td>${rightRes.totals.t}</td><td>${rightRes.totals.p}</td><td>${rightRes.totals.c}</td><td>${rightRes.totals.h}</td></tr><tr style="background:#eee; font-weight:bold; border-top:2px solid #000;"><td colspan="3">รวมทั้งสิ้น</td><td>${grandTotal.t}</td><td>${grandTotal.p}</td><td>${grandTotal.c}</td><td>${grandTotal.h}</td></tr></tbody></table></div>
+                </div>
+            </div>
+            <div class="grid-container">
+                <table class="schedule-grid">
+                    <thead><tr><th style="width:50px;">วัน</th>${Array.from({length:12}, (_,i) => `<th>${i+1}<br><span style="font-size:9px; font-weight:normal;">${8+i}.00-${9+i}.00</span></th>`).join('')}</tr></thead>
+                    <tbody>${gridRows}</tbody>
+                </table>
+            </div>
+            <div class="signature-section">
+                <div class="sig-box"><div class="sig-line">ลงชื่อ....................................................</div><div class="sig-name">(....................................................)</div><div class="sig-pos">หัวหน้าแผนกวิชา</div></div>
+                <div class="sig-box"><div class="sig-line">ลงชื่อ....................................................</div><div class="sig-name">(....................................................)</div><div class="sig-pos">หัวหน้างานพัฒนาหลักสูตรฯ</div></div>
+                <div class="sig-box"><div class="sig-line">ลงชื่อ....................................................</div><div class="sig-name">(....................................................)</div><div class="sig-pos">รองผู้อำนวยการฝ่ายวิชาการ</div></div>
+                <div class="sig-box"><div class="sig-line">ลงชื่อ....................................................</div><div class="sig-name">(....................................................)</div><div class="sig-pos">ผู้อำนวยการ</div></div>
+            </div>
+        </div>`;
+    }
+
+    function populateSelect(id, list, valKey, txtKey) {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '<option value="">-- เลือก --</option>';
+        list.forEach(item => { const opt = document.createElement('option'); opt.value = item[valKey]; opt.text = `${item[valKey]} : ${item[txtKey] || ''}`; sel.appendChild(opt); });
+    }
+
+    init();
+</script>
+</body>
+</html>
